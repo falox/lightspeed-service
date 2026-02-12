@@ -6,7 +6,7 @@ from dataclasses import field
 from typing import Any, Literal, Optional, Self, Union
 
 from langchain_core.language_models.llms import LLM
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.dataclasses import dataclass
 
@@ -850,13 +850,34 @@ class CacheEntry(BaseModel):
     def cache_entries_to_history(
         cache_entries: list["CacheEntry"],
     ) -> list[BaseMessage]:
-        """Convert cache entries to a history."""
+        """Convert cache entries to a history.
+
+        Reconstructs the full message sequence including tool interactions
+        so the LLM sees prior tool usage in conversation history.
+        """
         history: list[BaseMessage] = []
         for entry in cache_entries:
             entry.query.content = entry.query.content.strip()
             entry.response.content = entry.response.content.strip()
             history.append(entry.query)
-            # the real response or empty string when response is not recorded
+
+            if entry.tool_calls and entry.tool_results:
+                # Reconstruct: AIMessage(tool_calls) -> ToolMessages -> AIMessage(text)
+                history.append(
+                    AIMessage(content="", tool_calls=entry.tool_calls)
+                )
+                # Build a lookup for tool results by tool_call_id
+                results_by_id = {r["id"]: r for r in entry.tool_results}
+                for tc in entry.tool_calls:
+                    tool_id = tc.get("id", "")
+                    result = results_by_id.get(tool_id, {})
+                    history.append(
+                        ToolMessage(
+                            content=str(result.get("content", "")),
+                            tool_call_id=tool_id,
+                        )
+                    )
+
             history.append(entry.response)
 
         return history
