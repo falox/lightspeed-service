@@ -1,0 +1,78 @@
+# Tuning Log
+
+Logical fixes and improvements to the OLS codebase. Each entry describes the
+problem, the root cause, and the fix so it can be re-applied even if the
+surrounding code has changed significantly.
+
+---
+
+## 1. Preserve tool-call history in follow-up conversation turns
+
+**Problem**: During a multi-turn troubleshooting session the LLM uses MCP tools
+on the first reply but stops using them in subsequent replies unless the user
+explicitly asks. The user has to say things like "use tools to check" to get
+tool usage again.
+
+**Root cause**: When conversation history is reconstructed from the cache for
+follow-up turns, only `HumanMessage` and `AIMessage` (text) are kept. The
+intermediate `AIMessage(tool_calls=...)` and `ToolMessage` (tool results) from
+prior turns are discarded. The LLM therefore sees a history where it answered
+directly without tools, and follows that pattern.
+
+The method responsible is `CacheEntry.cache_entries_to_history` in
+`ols/app/models/models.py`. It iterated over cached entries and appended only
+`entry.query` and `entry.response`, ignoring the `tool_calls` and
+`tool_results` fields that are already stored in each `CacheEntry`.
+
+**Fix**: When a cache entry contains `tool_calls` and `tool_results`, reconstruct
+the full LangChain message sequence before the final text response:
+
+1. `HumanMessage` — the user query
+2. `AIMessage(content="", tool_calls=[...])` — the LLM's tool-call request
+3. `ToolMessage(content=..., tool_call_id=...)` for each tool result, matched
+   by ID
+4. `AIMessage(content=...)` — the final text response
+
+Entries without tool calls are unchanged (just `HumanMessage` + `AIMessage`).
+
+This way the LLM sees that it previously used tools and received results,
+which naturally encourages it to continue using tools when the follow-up
+warrants it.
+
+**Files changed**:
+- `ols/app/models/models.py` — `CacheEntry.cache_entries_to_history`, added
+  `ToolMessage` import
+- `tests/unit/app/models/test_models.py` — added tests for tool-call history
+  reconstruction and mixed (tool + non-tool) conversation history
+
+---
+
+## 2. Increase tool output token budgets
+
+**Problem**: MCP tool outputs (logs, metrics, resource listings) are frequently
+truncated, causing the LLM to work with incomplete data and produce shallow
+root cause analysis. With a 128K context window, the default budgets were
+overly conservative.
+
+**Root cause**: The defaults in `ols/constants.py` were:
+- `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 8000` (~6K words per tool)
+- `DEFAULT_MAX_TOKENS_FOR_TOOLS = 32000` (total across all rounds)
+
+The total budget is shared across all rounds and also includes tool definition
+schemas. By round 3-4 the effective per-tool limit drops well below 8K,
+making later tool calls nearly useless. For log or metrics output, even
+the full 8K is often not enough for meaningful analysis.
+
+**Fix**: Increase defaults to:
+- `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 16000`
+- `DEFAULT_MAX_TOKENS_FOR_TOOLS = 48000`
+
+These are still well within the 128K default context window (which reserves
+4K for response), leaving plenty of room for the prompt, RAG context, and
+conversation history. Users with smaller context windows can override via
+model config (`max_tokens_per_tool_output` and `max_tokens_for_tools` in
+the `parameters` section).
+
+**Files changed**:
+- `ols/constants.py` — updated `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT` and
+  `DEFAULT_MAX_TOKENS_FOR_TOOLS`

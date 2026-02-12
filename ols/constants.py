@@ -72,9 +72,9 @@ TOKEN_BUFFER_WEIGHT = 1.1
 
 # Tool output token limits
 # Maximum tokens for a single tool output before truncation
-DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 8000
+DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 16000
 # Total tokens reserved for all tool outputs (only used when MCP servers configured)
-DEFAULT_MAX_TOKENS_FOR_TOOLS = 32000
+DEFAULT_MAX_TOKENS_FOR_TOOLS = 48000
 
 
 # RAG related constants
