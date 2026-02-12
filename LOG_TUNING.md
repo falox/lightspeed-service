@@ -132,3 +132,40 @@ tailored to Granite models.
 
 **Files changed**:
 - `ols/customize/ols/prompts.py` — expanded `AGENT_INSTRUCTION_GENERIC`
+
+---
+
+## 5. Improve tool output truncation to keep head and tail
+
+**Problem**: When a tool output exceeded the token limit, `truncate_tool_output`
+in `ols/utils/token_handler.py` truncated from the tail — keeping the beginning
+and chopping the end. This is wrong for logs and events, where the most recent
+(and usually most relevant) entries are at the end. The truncated output also
+included a message saying "Please ask a more specific question," which is
+unhelpful when the LLM should still attempt analysis with the available data.
+
+**Root cause**: The method kept only a contiguous head portion of the output
+and discarded everything after the token limit. For log-like output, this meant
+the most recent and actionable entries were always lost.
+
+**Fix**: Changed `truncate_tool_output` to keep both head (~40% of usable
+tokens) and tail (~60%) with a gap marker in the middle:
+
+```
+[first ~40% of tokens]
+
+[... OUTPUT TRUNCATED: {N} tokens removed from middle ...]
+
+[last ~60% of tokens]
+```
+
+The 40/60 split favors the tail since recent data matters more for
+troubleshooting. The gap marker tells the LLM how much was removed so it
+knows the data is incomplete. The old "Please ask a more specific question"
+message was removed — the LLM should still attempt analysis with what it has.
+
+**Files changed**:
+- `ols/utils/token_handler.py` — rewrote `truncate_tool_output` for
+  head+tail truncation with gap marker
+- `tests/unit/utils/test_token_handler.py` — updated truncation tests to
+  verify both head and tail are preserved

@@ -232,20 +232,28 @@ class TokenHandler:
 
         return history, False
 
-    def truncate_tool_output(self, text: str, max_tokens: int) -> tuple[str, bool]:
-        """Truncate tool output to fit within token limit.
+    def truncate_tool_output(
+        self,
+        text: str,
+        max_tokens: int,
+        head_ratio: float = 0.4,
+    ) -> tuple[str, bool]:
+        """Truncate tool output keeping head and tail with a gap marker.
 
-        When tool output exceeds the limit, truncate from the tail (keeping the
-        beginning which typically contains headers/summary) and append a warning
-        message for the LLM.
+        When tool output exceeds the limit, keep the head (~40%) and
+        tail (~60%) of the output with a gap marker in the middle. The head
+        often contains headers or column labels; the tail contains the most
+        recent entries which are usually most relevant for troubleshooting.
 
         Args:
-            text: Tool output text to potentially truncate
-            max_tokens: Maximum tokens allowed for the output
+            text: Tool output text to potentially truncate.
+            max_tokens: Maximum tokens allowed for the output.
+            head_ratio: Fraction of usable tokens allocated to the head
+                (default 0.4). The remainder goes to the tail.
 
         Returns:
             Tuple of (output_text, was_truncated) where was_truncated indicates
-            if truncation occurred
+            if truncation occurred.
         """
         tokens = self.text_to_tokens(text)
         token_count = TokenHandler._get_token_count(tokens)
@@ -253,19 +261,28 @@ class TokenHandler:
         if token_count <= max_tokens:
             return text, False
 
+        tokens_removed = len(tokens) - max_tokens
+
         logger.info(
-            "Truncating tool output from %d to %d tokens", token_count, max_tokens
+            "Truncating tool output from %d to %d tokens (removing %d from middle)",
+            token_count,
+            max_tokens,
+            tokens_removed,
         )
 
-        warning_message = (
-            "\n\n[OUTPUT TRUNCATED - The tool returned more data than can be "
-            "processed. Please ask a more specific question to get complete results.]"
+        gap_marker = (
+            f"\n\n[... OUTPUT TRUNCATED: {tokens_removed} tokens removed "
+            f"from middle ...]\n\n"
         )
-        warning_tokens = TokenHandler._get_token_count(
-            self.text_to_tokens(warning_message)
+        gap_marker_tokens = TokenHandler._get_token_count(
+            self.text_to_tokens(gap_marker)
         )
 
-        truncated_tokens = tokens[: max_tokens - warning_tokens]
-        truncated_text = self.tokens_to_text(truncated_tokens)
+        usable_tokens = max_tokens - gap_marker_tokens
+        head_tokens = int(usable_tokens * head_ratio)
+        tail_tokens = usable_tokens - head_tokens
 
-        return truncated_text + warning_message, True
+        head_text = self.tokens_to_text(tokens[:head_tokens])
+        tail_text = self.tokens_to_text(tokens[-tail_tokens:])
+
+        return head_text + gap_marker + tail_text, True

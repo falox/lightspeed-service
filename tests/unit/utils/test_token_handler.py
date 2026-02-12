@@ -338,7 +338,6 @@ class TestTokenHandler(TestCase):
 
     def test_truncate_tool_output_truncation_needed(self):
         """Test truncate_tool_output when output exceeds limit."""
-        # Create a long output that will exceed the limit
         long_output = "word " * 500  # roughly 500 tokens
 
         result, was_truncated = self._token_handler_obj.truncate_tool_output(
@@ -346,26 +345,22 @@ class TestTokenHandler(TestCase):
         )
 
         assert was_truncated is True
-        # Check that warning message is appended
-        assert "[OUTPUT TRUNCATED" in result
-        assert "Please ask a more specific question" in result
-        # Result should be shorter than original
+        assert "OUTPUT TRUNCATED" in result
+        assert "tokens removed from middle" in result
         assert len(result) < len(long_output)
 
-    def test_truncate_tool_output_preserves_beginning(self):
-        """Test that truncation keeps the beginning of the output."""
-        # Create output with recognizable start
-        long_output = "START_MARKER " + ("filler " * 500) + " END_MARKER"
+    def test_truncate_tool_output_preserves_head_and_tail(self):
+        """Test that truncation keeps both the beginning and end."""
+        long_output = "START_MARKER " + ("filler " * 500) + "END_MARKER"
 
         result, was_truncated = self._token_handler_obj.truncate_tool_output(
             long_output, max_tokens=100
         )
 
         assert was_truncated is True
-        # Beginning should be preserved
         assert result.startswith("START_MARKER")
-        # End should be truncated (replaced with warning)
-        assert "END_MARKER" not in result
+        assert result.endswith("END_MARKER")
+        assert "OUTPUT TRUNCATED" in result
 
     @mock.patch("ols.utils.token_handler.TOKEN_BUFFER_WEIGHT", 1.1)
     def test_truncate_tool_output_exact_limit(self):
