@@ -44,3 +44,35 @@ warrants it.
   `ToolMessage` import
 - `tests/unit/app/models/test_models.py` — added tests for tool-call history
   reconstruction and mixed (tool + non-tool) conversation history
+
+---
+
+## 2. Increase tool output token budgets
+
+**Problem**: MCP tool outputs (logs, metrics, resource listings) are frequently
+truncated, causing the LLM to work with incomplete data and produce shallow
+root cause analysis. With a 128K context window, the default budgets were
+overly conservative.
+
+**Root cause**: The defaults in `ols/constants.py` were:
+- `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 8000` (~6K words per tool)
+- `DEFAULT_MAX_TOKENS_FOR_TOOLS = 32000` (total across all rounds)
+
+The total budget is shared across all rounds and also includes tool definition
+schemas. By round 3-4 the effective per-tool limit drops well below 8K,
+making later tool calls nearly useless. For log or metrics output, even
+the full 8K is often not enough for meaningful analysis.
+
+**Fix**: Increase defaults to:
+- `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT = 16000`
+- `DEFAULT_MAX_TOKENS_FOR_TOOLS = 48000`
+
+These are still well within the 128K default context window (which reserves
+4K for response), leaving plenty of room for the prompt, RAG context, and
+conversation history. Users with smaller context windows can override via
+model config (`max_tokens_per_tool_output` and `max_tokens_for_tools` in
+the `parameters` section).
+
+**Files changed**:
+- `ols/constants.py` — updated `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT` and
+  `DEFAULT_MAX_TOKENS_FOR_TOOLS`
