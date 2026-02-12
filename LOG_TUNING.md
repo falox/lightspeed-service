@@ -200,3 +200,32 @@ the reasoning chain from tool results to conclusion.
 **Files changed**:
 - `ols/customize/ols/prompts.py` — replaced style guide in
   `AGENT_SYSTEM_INSTRUCTION`
+
+---
+
+## 7. Truncate tool results in conversation history
+
+**Problem**: After entry #1 (preserve tool-call history), follow-up turns
+include full tool result content from prior turns in the conversation
+history. Tool results can be 16K+ tokens each. After 2 turns with tool
+calls, the prompt exceeds the context window (saw `Prompt length 76567
+exceeds LLM available context window limit 75904 tokens`).
+
+**Root cause**: `CacheEntry.cache_entries_to_history` in
+`ols/app/models/models.py` reconstructs `ToolMessage(content=...)` with
+the full tool output. For follow-up turns, the LLM already synthesized
+these results into its previous answer — it doesn't need the full output
+again. The token budget math: 128K context − 4K response − 48K tools =
+76K available. Full tool results in history easily consume 30–40K of that.
+
+**Fix**: Truncate each `ToolMessage` content to 200 characters when
+reconstructing history. Content exceeding 200 chars gets a suffix
+`... [truncated in history]`. This keeps the tool call structure visible
+(the LLM knows it used tools and sees a preview of the result) without
+burning 16K tokens per tool result on history.
+
+**Files changed**:
+- `ols/app/models/models.py` — added content truncation in
+  `CacheEntry.cache_entries_to_history`
+- `tests/unit/app/models/test_models.py` — added
+  `test_cache_entries_to_history_tool_content_truncated`

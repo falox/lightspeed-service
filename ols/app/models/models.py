@@ -871,9 +871,12 @@ class CacheEntry(BaseModel):
                 for tc in entry.tool_calls:
                     tool_id = tc.get("id", "")
                     result = results_by_id.get(tool_id, {})
+                    content = str(result.get("content", ""))
+                    if len(content) > 200:
+                        content = content[:200] + "... [truncated in history]"
                     history.append(
                         ToolMessage(
-                            content=str(result.get("content", "")),
+                            content=content,
                             tool_call_id=tool_id,
                         )
                     )
