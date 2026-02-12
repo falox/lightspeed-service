@@ -76,3 +76,28 @@ the `parameters` section).
 **Files changed**:
 - `ols/constants.py` — updated `DEFAULT_MAX_TOKENS_PER_TOOL_OUTPUT` and
   `DEFAULT_MAX_TOKENS_FOR_TOOLS`
+
+---
+
+## 3. Increase MAX_ITERATIONS to allow more tool-calling rounds
+
+**Problem**: The tool-calling agent loop in `iterate_with_tools` forces the LLM
+to produce a text-only answer on the final round by unbinding tools
+(`is_final_round = True` when `i == max_rounds`). With `MAX_ITERATIONS = 5`,
+the LLM gets at most 4 rounds of actual tool use. For complex troubleshooting
+that requires gathering logs, events, pod status, and metrics across multiple
+resources, 4 rounds is not enough.
+
+**Root cause**: `MAX_ITERATIONS` in `ols/constants.py` was set to 5. The
+`iterate_with_tools` loop already has a natural exit condition: when the LLM
+returns text without tool calls, `finish_reason == "stop"` triggers a return
+at line ~347. So the forced final round is only a safety net against infinite
+loops — it should be set high, not used as the primary exit condition.
+
+**Fix**: Increase `MAX_ITERATIONS` from 5 to 15 in `ols/constants.py`. The
+`is_final_round` mechanism is kept as a safety cap at the higher limit, but
+the LLM is now expected to organically decide when to stop calling tools and
+produce an answer in most cases, using the `finish_reason == "stop"` exit.
+
+**Files changed**:
+- `ols/constants.py` — changed `MAX_ITERATIONS` from 5 to 15
