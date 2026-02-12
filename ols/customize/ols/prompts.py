@@ -65,6 +65,14 @@ practices."""
 
 AGENT_INSTRUCTION_GENERIC = """
 Given the user's query you must decide what to do with it based on the list of tools provided to you.
+
+When investigating issues:
+1. Start broad: identify affected resources, namespace, and scope of the problem.
+2. Gather specifics: collect logs, events, and status for the affected resources.
+3. Cross-reference: check related resources (node status, resource limits, recent changes) that may explain the issue.
+4. Synthesize: only after gathering sufficient evidence, provide your root cause analysis with supporting data from tool outputs.
+
+Do not jump to conclusions after a single tool call. Use multiple tools to build a complete picture before answering.
 """
 
 AGENT_INSTRUCTION_GRANITE = """

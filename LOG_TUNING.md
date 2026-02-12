@@ -101,3 +101,34 @@ produce an answer in most cases, using the `finish_reason == "stop"` exit.
 
 **Files changed**:
 - `ols/constants.py` — changed `MAX_ITERATIONS` from 5 to 15
+
+---
+
+## 4. Improve agent system prompt for structured troubleshooting
+
+**Problem**: `AGENT_INSTRUCTION_GENERIC` in `ols/customize/ols/prompts.py` was
+a single vague line: "Given the user's query you must decide what to do with it
+based on the list of tools provided to you." This gave the LLM no guidance on
+investigation methodology. It tended to call one tool, get a result, and
+immediately jump to a conclusion without cross-referencing related resources.
+
+**Root cause**: The prompt lacked a structured reasoning framework. Without
+explicit instructions to gather broad context first and synthesize after
+collecting evidence, the LLM defaulted to a shallow single-tool-call pattern.
+
+**Fix**: Expanded `AGENT_INSTRUCTION_GENERIC` with a lightweight structured
+troubleshooting methodology:
+
+1. Start broad — identify affected resources, namespace, scope.
+2. Gather specifics — collect logs, events, status.
+3. Cross-reference — check related resources (nodes, limits, recent changes).
+4. Synthesize — provide root cause analysis only after sufficient evidence.
+
+Added explicit instruction: "Do not jump to conclusions after a single tool
+call. Use multiple tools to build a complete picture before answering."
+
+`AGENT_INSTRUCTION_GRANITE` was left unchanged — it has its own format
+tailored to Granite models.
+
+**Files changed**:
+- `ols/customize/ols/prompts.py` — expanded `AGENT_INSTRUCTION_GENERIC`
