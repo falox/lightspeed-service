@@ -169,3 +169,34 @@ message was removed — the LLM should still attempt analysis with what it has.
   head+tail truncation with gap marker
 - `tests/unit/utils/test_token_handler.py` — updated truncation tests to
   verify both head and tail are preserved
+
+---
+
+## 6. Soften "be extremely concise" style guide in agent system prompt
+
+**Problem**: The `AGENT_SYSTEM_INSTRUCTION` style guide in
+`ols/customize/ols/prompts.py` told the LLM to "Be extremely concise" and
+"Remove unnecessary words." This caused the LLM to strip out diagnostic
+evidence and produce one-line answers that stated a root cause without showing
+what was checked or what evidence supported the conclusion. Users had no way
+to verify the answer or understand the reasoning.
+
+**Root cause**: The style guide prioritized brevity over completeness. The
+instruction "Remove unnecessary words" was interpreted by the LLM as license
+to omit tool output references, checked resources, and supporting evidence —
+all of which are necessary for a useful troubleshooting response.
+
+**Fix**: Replaced the four-line style guide with three lines that preserve
+conciseness as a goal while requiring diagnostic evidence:
+
+- "Be concise but include all diagnostic evidence that supports your
+  conclusion."
+- "Show what was checked and what was found before stating the root cause."
+- "Prioritize actionable details: root cause, affected resources, and fix."
+
+This keeps responses focused (no filler) while ensuring the LLM includes
+the reasoning chain from tool results to conclusion.
+
+**Files changed**:
+- `ols/customize/ols/prompts.py` — replaced style guide in
+  `AGENT_SYSTEM_INSTRUCTION`

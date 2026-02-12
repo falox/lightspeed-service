@@ -98,10 +98,9 @@ satisfied with all the details then answer user query.
 * Do not request same tool/function call with same argument.
 
 Style guide:
-* Be extremely concise.
-* Remove unnecessary words.
-* Prioritize key details (root cause, fix).
-* Terseness must not omit critical info.
+* Be concise but include all diagnostic evidence that supports your conclusion.
+* Show what was checked and what was found before stating the root cause.
+* Prioritize actionable details: root cause, affected resources, and fix.
 """
 
 USE_CONTEXT_INSTRUCTION = """
