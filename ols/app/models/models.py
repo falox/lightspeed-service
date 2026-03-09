@@ -6,7 +6,7 @@ from dataclasses import field
 from typing import Any, Literal, Optional, Self, Union
 
 from langchain_core.language_models.llms import LLM
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic.dataclasses import dataclass
 
@@ -850,13 +850,44 @@ class CacheEntry(BaseModel):
     def cache_entries_to_history(
         cache_entries: list["CacheEntry"],
     ) -> list[BaseMessage]:
-        """Convert cache entries to a history."""
+        """Convert cache entries to a history.
+
+        Reconstructs the full message sequence including tool interactions
+        so the LLM sees prior tool usage in conversation history.
+        """
         history: list[BaseMessage] = []
         for entry in cache_entries:
             entry.query.content = entry.query.content.strip()
             entry.response.content = entry.response.content.strip()
             history.append(entry.query)
-            # the real response or empty string when response is not recorded
+
+            if entry.tool_calls and entry.tool_results:
+                # Reconstruct: AIMessage(tool_calls) -> ToolMessages -> AIMessage(text)
+                # Filter to only LangChain-accepted keys; cached dicts may
+                # contain extra fields (server_name, tool_meta, etc.)
+                langchain_keys = {"name", "args", "id", "type"}
+                cleaned_tool_calls = [
+                    {k: v for k, v in tc.items() if k in langchain_keys}
+                    for tc in entry.tool_calls
+                ]
+                history.append(
+                    AIMessage(content="", tool_calls=cleaned_tool_calls)
+                )
+                # Build a lookup for tool results by tool_call_id
+                results_by_id = {r["id"]: r for r in entry.tool_results}
+                for tc in entry.tool_calls:
+                    tool_id = tc.get("id", "")
+                    result = results_by_id.get(tool_id, {})
+                    content = str(result.get("content", ""))
+                    if len(content) > 200:
+                        content = content[:200] + "... [truncated in history]"
+                    history.append(
+                        ToolMessage(
+                            content=content,
+                            tool_call_id=tool_id,
+                        )
+                    )
+
             history.append(entry.response)
 
         return history

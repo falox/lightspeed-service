@@ -39,11 +39,15 @@ This way the LLM sees that it previously used tools and received results,
 which naturally encourages it to continue using tools when the follow-up
 warrants it.
 
+Tool result content is truncated to 200 characters with a `[truncated in history]`
+suffix to prevent full outputs (16K+ tokens each) from exceeding the context
+window on follow-up turns.
+
 **Files changed**:
 - `ols/app/models/models.py` — `CacheEntry.cache_entries_to_history`, added
-  `ToolMessage` import
+  `ToolMessage` import, truncation of tool result content
 - `tests/unit/app/models/test_models.py` — added tests for tool-call history
-  reconstruction and mixed (tool + non-tool) conversation history
+  reconstruction, truncation, and mixed (tool + non-tool) conversation history
 
 ---
 

@@ -3,7 +3,7 @@
 import json
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from pydantic import ValidationError
 
 from ols.app.models.models import (
@@ -516,6 +516,112 @@ class TestCacheEntry:
         assert history == [
             HumanMessage("what?"),
             AIMessage(""),
+        ]
+
+    @staticmethod
+    def test_cache_entries_to_history_with_tool_calls():
+        """Test tool calls and results are included in history."""
+        tool_calls = [
+            {"name": "get_pods", "args": {"namespace": "default"}, "id": "tc1"},
+            {"name": "get_logs", "args": {"pod": "foo"}, "id": "tc2"},
+        ]
+        tool_results = [
+            {"id": "tc1", "status": "success", "content": "pod-a, pod-b"},
+            {"id": "tc2", "status": "success", "content": "OOMKilled"},
+        ]
+        cache_entries = [
+            CacheEntry(
+                query=HumanMessage("why is my pod crashing?"),
+                response=AIMessage("The pod is OOMKilled."),
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+            ),
+        ]
+        history = CacheEntry.cache_entries_to_history(cache_entries)
+        assert history == [
+            HumanMessage("why is my pod crashing?"),
+            AIMessage(content="", tool_calls=tool_calls),
+            ToolMessage(content="pod-a, pod-b", tool_call_id="tc1"),
+            ToolMessage(content="OOMKilled", tool_call_id="tc2"),
+            AIMessage("The pod is OOMKilled."),
+        ]
+
+    @staticmethod
+    def test_cache_entries_to_history_tool_content_truncated():
+        """Test long tool result content is truncated in history."""
+        long_content = "x" * 300
+        tool_calls = [{"name": "get_logs", "args": {}, "id": "tc1"}]
+        tool_results = [
+            {"id": "tc1", "status": "success", "content": long_content},
+        ]
+        cache_entries = [
+            CacheEntry(
+                query=HumanMessage("show logs"),
+                response=AIMessage("Here are the logs."),
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+            ),
+        ]
+        history = CacheEntry.cache_entries_to_history(cache_entries)
+        tool_msg = history[2]
+        assert isinstance(tool_msg, ToolMessage)
+        assert len(tool_msg.content) == 200 + len("... [truncated in history]")
+        assert tool_msg.content.startswith("x" * 200)
+        assert tool_msg.content.endswith("... [truncated in history]")
+
+    @staticmethod
+    def test_cache_entries_to_history_filters_extra_tool_call_keys():
+        """Test extra keys like server_name are stripped from tool_calls."""
+        tool_calls = [
+            {
+                "name": "get_pods",
+                "args": {},
+                "id": "tc1",
+                "server_name": "my-server",
+                "tool_meta": {"some": "data"},
+            },
+        ]
+        tool_results = [{"id": "tc1", "status": "success", "content": "ok"}]
+        cache_entries = [
+            CacheEntry(
+                query=HumanMessage("list pods"),
+                response=AIMessage("Done."),
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+            ),
+        ]
+        history = CacheEntry.cache_entries_to_history(cache_entries)
+        ai_tool_msg = history[1]
+        assert isinstance(ai_tool_msg, AIMessage)
+        for tc in ai_tool_msg.tool_calls:
+            assert "server_name" not in tc
+            assert "tool_meta" not in tc
+
+    @staticmethod
+    def test_cache_entries_to_history_mixed():
+        """Test history with both tool-using and non-tool entries."""
+        tool_calls = [{"name": "get_pods", "args": {}, "id": "tc1"}]
+        tool_results = [{"id": "tc1", "status": "success", "content": "pod-a"}]
+        cache_entries = [
+            CacheEntry(
+                query=HumanMessage("list pods"),
+                response=AIMessage("Found pod-a."),
+                tool_calls=tool_calls,
+                tool_results=tool_results,
+            ),
+            CacheEntry(
+                query=HumanMessage("thanks"),
+                response=AIMessage("You're welcome."),
+            ),
+        ]
+        history = CacheEntry.cache_entries_to_history(cache_entries)
+        assert history == [
+            HumanMessage("list pods"),
+            AIMessage(content="", tool_calls=tool_calls),
+            ToolMessage(content="pod-a", tool_call_id="tc1"),
+            AIMessage("Found pod-a."),
+            HumanMessage("thanks"),
+            AIMessage("You're welcome."),
         ]
 
 
