@@ -45,7 +45,7 @@ class GenericLLMParameters:
 
 
 # Max Iteration for tool calling
-MAX_ITERATIONS = 5
+MAX_ITERATIONS = 15
 
 
 # Token related constants
