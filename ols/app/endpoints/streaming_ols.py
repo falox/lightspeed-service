@@ -467,6 +467,18 @@ async def response_processing_wrapper(  # noqa: C901  # pylint: disable=R0912,R0
                             media_type=media_type,
                         )
                     case StreamChunkType.REASONING:
+                        if (
+                            item.text and item.text.strip()
+                        ):  # Only process non-empty, non-whitespace text
+                            # Add separator only when switching FROM text/other TO reasoning
+                            if (
+                                response
+                                and was_reasoning is False
+                                and not response.endswith("\n\n")
+                            ):
+                                # Ensure exactly \n\n by stripping any trailing newlines
+                                response = response.rstrip("\n") + "\n\n"
+                            response += item.text
                         was_reasoning = True
                         yield stream_event(
                             data={"id": idx, "reasoning": item.text},
@@ -477,8 +489,19 @@ async def response_processing_wrapper(  # noqa: C901  # pylint: disable=R0912,R0
                     case StreamChunkType.TEXT:
                         if was_reasoning and media_type == MEDIA_TYPE_TEXT:
                             yield "\n\n"
-                            was_reasoning = False
-                        response += item.text
+                        if (
+                            item.text and item.text.strip()
+                        ):  # Only process non-empty, non-whitespace text
+                            # Add separator only when switching FROM reasoning TO text (for storage)
+                            if (
+                                was_reasoning
+                                and response
+                                and not response.endswith("\n\n")
+                            ):
+                                # Ensure exactly \n\n by stripping any trailing newlines
+                                response = response.rstrip("\n") + "\n\n"
+                            response += item.text
+                        was_reasoning = False
                         yield stream_event(
                             data={"id": idx, "token": item.text},
                             event_type=LLM_TOKEN_EVENT,
